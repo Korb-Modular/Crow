@@ -1,4 +1,4 @@
-# Rotating CVs
+# RotatingCVs
 
 ## Script Description
 This Lua script implements a rotating four-channel crossfade for Monome Crow. The four outputs are phase-shifted by 90° (0°, 90°, 180°, 270°). Two CV inputs control behavior at runtime, and the crossfade law can be switched between two modes.
