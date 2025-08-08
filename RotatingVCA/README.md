@@ -1,4 +1,4 @@
-# Rotating VCA
+# Rotating VCs
 
 ## Script Description
 This Lua script implements a rotating four-channel crossfade for Monome Crow. The four outputs are phase-shifted by 90° (0°, 90°, 180°, 270°). Two CV inputs control behavior at runtime, and the crossfade law can be switched between two modes.
@@ -12,7 +12,7 @@ crossfade_mode = "power"
 ## Inputs
 - **Input 1 (CV1)** — Rotation speed (−5 V … +5 V):  
   negative = rotate left, positive = rotate right, 0 V = stop.
-- **Input 2 (CV2)** — VCA width/overlap (0 V … 10 V):  
+- **Input 2 (CV2)** — CV width/overlap (0 V … 10 V):  
   0 V = no overlap, 10 V = maximum overlap.
 
 ## Initialization
