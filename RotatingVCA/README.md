@@ -36,3 +36,4 @@ local volts = gain * 10 - 5   -- scale 0–1 gain to −5 V to +5 V
 
 You can change the output range by adjusting the multiplier and offset here (e.g., `gain * 8 - 4` → ±4 V, or `gain * 5` → 0…+5 V).
 
+
