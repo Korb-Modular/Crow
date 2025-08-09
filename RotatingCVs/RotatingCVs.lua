@@ -1,124 +1,134 @@
--- Rotating Crossfade with 4 outputs for Monome Crow
--- CV1: Rotation speed (–5 V to +5 V → slow rotation backward/forward)
--- CV2: Signal width (–5 V to +5 V; width at −5/0/+5 V is configurable)
--- Outputs 1–4: Rotating CV –5 V to +5 V, 90° phase shifted
--- Crossfade modes: "scale" or "power"
+--[[ 
+RotatingCVs – Variable-Width Rotating LFO for Monome Crow
+---------------------------------------------------------
+Author: Marcus Korb
+Description:
+    Generates four phase-shifted CV outputs (90° apart) from a master LFO.
+    LFO speed is controlled via Input 1 (–5..+5 V, bipolar speed & direction).
+    Active lobe width (like a bandpass filter shape) is controlled via Input 2.
+    Outputs swing around a global voltage offset, adjustable via a single parameter.
+    Shape mode can be "triangle" (linear slopes) or "cosine" (smooth slopes), with
+    optional edge exponent for sharper transitions.
 
--- Utility functions
+Inputs:
+    In1 (CV1) : Rotation speed control (–5..+5 V)
+    In2 (CV2) : Lobe width control (–5..+5 V → narrow/mid/wide)
 
-function clamp(val, min, max)
-  return math.max(min, math.min(max, val))
+Outputs:
+    Out1..Out4 : CV outputs, 90° phase-shifted, centered around global offset
+
+Width Control (CV2):
+    - At –5 V → narrow lobe (default: 30°) → steep edges, possible silent gaps
+    - At  0 V → medium lobe (default: 90°) → standard crossfade
+    - At +5 V → wide lobe (default: 270°) → soft overlap between outputs
+    Mapping is linear between these three points, adjustable via:
+        width_at_neg5, width_at_zero, width_at_pos5
+
+Global Output Offset:
+    output_offset_volts shifts the baseline of all outputs:
+        -5.0 → swing = -5..+5 V
+         0.0 → swing = 0..+10 V
+        +2.0 → swing = +2..+12 V (will clamp to ±10 V max)
+
+Version: 2.0
+License: MIT
+]]--
+
+-- ===== Utility =====
+local function clamp(x, a, b) return math.max(a, math.min(b, x)) end
+
+-- ===== Parameters =====
+local update_interval    = 0.02     -- seconds per tick
+local slew_time          = 0.02     -- seconds
+local phase_deg          = 0.0      -- 0..360
+local speed_deg_per_5v   = 180.0    -- deg/sec at CV1 = +5 V
+local width_at_neg5      = 30.0     -- deg width at CV2 = –5 V
+local width_at_zero      = 90.0     -- deg width at CV2 =  0 V
+local width_at_pos5      = 270.0    -- deg width at CV2 = +5 V
+local current_width      = width_at_zero
+local edge_exponent      = 1.0      -- >1 sharpens edges
+local shape_mode         = "triangle" -- "triangle" or "cosine"
+local channel_offsets    = {0, 90, 180, 270} -- per-output phase offsets
+local output_offset_volts = -5.0    -- global baseline offset (V)
+
+-- Internal
+local rotation_speed_dps = 0.0
+
+-- ===== Helpers =====
+local function normalize_pm180(a)
+    local x = (a + 180.0) % 360.0
+    return x - 180.0
 end
 
-function now()
-  return time()
+local function map_width_from_cv2(v)
+    local vv = clamp(v, -5.0, 5.0)
+    if vv <= 0.0 then
+        local t = (vv + 5.0)/5.0
+        return width_at_neg5 + (width_at_zero - width_at_neg5)*t
+    else
+        local t = vv/5.0
+        return width_at_zero + (width_at_pos5 - width_at_zero)*t
+    end
 end
 
--- Configuration
+local function gain_triangle(pd_deg, W)
+    local halfW = W * 0.5
+    local d = math.abs(pd_deg)
+    if d >= halfW then return 0.0 end
+    return 1.0 - (d / halfW)
+end
 
-local update_interval = 0.02         -- Output update rate (20 ms)
-local slew_time = 0.02               -- Slew time for smooth transitions
-local phase = 0                      -- Global phase (0–360°)
-local last_time = 0
-local rotation_speed = 0            -- Degrees per second
--- Width control via CV2 (degrees of active lobe)
-local width_at_neg5 = 30            -- degrees at −5 V (very narrow, small peak)
-local width_at_zero = 90            -- degrees at 0 V
-local width_at_pos5 = 270           -- degrees at +5 V (very wide)
-local current_width = width_at_zero -- updated by CV2 in real time
-local edge_exponent = 1.0           -- 1.0 = cosine; >1 = sharper peak
-local channel_offsets = {0, 90, 180, 270}  -- Output phase offsets
+local function gain_cosine(pd_deg, W)
+    local x = (math.pi * pd_deg) / W
+    local c = math.cos(x)
+    return (c > 0.0) and c or 0.0
+end
 
--- Rotation speed factor: degrees per second per volt
--- 0.5 → max speed = 2.5°/s at +5 V = ~144 sec per rotation (very slow)
-local max_rotation_per_volt = 0.5
+local function lobe_gain(phase_diff_deg)
+    local pd = normalize_pm180(phase_diff_deg)
+    local W  = clamp(current_width, 0.1, 359.9)
+    local g  = (shape_mode == "triangle") and gain_triangle(pd, W) or gain_cosine(pd, W)
+    if edge_exponent and edge_exponent ~= 1.0 then
+        g = g ^ edge_exponent
+    end
+    return g
+end
 
--- Crossfade mode: "scale" (wider cos stretch) or "power" (musically optimized)
-crossfade_mode = "power"  -- legacy; width-based shaping ignores mode
--- crossfade_mode = "scale"
+local function gain_to_volts(g)
+    -- g: 0..1 → amplitude 10 Vpp, then apply offset
+    local v = g * 10.0 + output_offset_volts
+    return clamp(v, -10.0, 10.0) -- prevent exceeding Crow safe range
+end
 
--- Initialization
-
+-- ===== Crow lifecycle =====
 function init()
-  print("Rotating Crossfade Script started.")
+    print("RotatingCVs v2 – Width control + Global voltage offset")
+    for i=1,4 do
+        output[i].slew  = slew_time
+        output[i].volts = output_offset_volts
+    end
 
-  for i = 1, 4 do
-    output[i].slew = slew_time
-    output[i].volts = -5
-  end
+    -- CV1: Speed control
+    input[1].mode   = 'stream'
+    input[1].stream = function(v)
+        local vv = clamp(v, -5.0, 5.0)
+        rotation_speed_dps = (vv/5.0) * speed_deg_per_5v
+    end
 
-  last_time = now()
+    -- CV2: Width control
+    input[2].mode   = 'stream'
+    input[2].stream = function(v)
+        current_width = map_width_from_cv2(v)
+    end
 
-  -- CV1: Rotation speed input
-  input[1].mode = 'stream'
-  input[1].stream = function(volts)
-    rotation_speed = clamp(volts, -5, 5) * max_rotation_per_volt
-  end
-
-  -- CV2: Signal width control (–5..+5 V → width in degrees)
-  input[2].mode = 'stream'
-  input[2].stream = function(volts)
-    current_width = width_from_cv2(volts)
-  end
-
-  metro.init(update_outputs, update_interval):start()
+    metro.init(tick, update_interval):start()
 end
 
--- Gain calculation based on phase difference and crossfade mode
-
-function calculate_gain(phase_diff)
-  -- Normalize to signed angle (−180..+180) to measure closeness to channel center
-  local pd = normalize_angle_deg(phase_diff)
-  local W = clamp(current_width, 0.1, 359.9) -- avoid divide-by-zero and full wrap
-
-  -- Variable-width cosine lobe: positive for |pd| < W/2, zero otherwise
-  -- x = pd * pi / W ensures cos(x) crosses zero at ±W/2
-  local x = math.rad(pd) * (180 / W) -- since math.rad(pd) = pd * pi/180 → x = pd * pi / W
-  local g = math.max(0, math.cos(x))
-
-  if edge_exponent and edge_exponent ~= 1.0 then
-    g = g ^ edge_exponent
-  end
-
-  return g
-end
-
--- Convert arbitrary angle to range −180..+180 degrees
-function normalize_angle_deg(a)
-  local x = (a + 180) % 360
-  if x < 0 then x = x + 360 end
-  return x - 180
-end
-
--- Map CV2 voltage (−5..+5 V) to target lobe width in degrees
-function width_from_cv2(volts)
-  local v = clamp(volts, -5, 5)
-  if v <= 0 then
-    -- v in [−5, 0] → t in [0, 1] between width_at_neg5 and width_at_zero
-    local t = (v + 5) / 5
-    return width_at_neg5 + (width_at_zero - width_at_neg5) * t
-  else
-    -- v in (0, 5] → t in (0, 1] between width_at_zero and width_at_pos5
-    local t = v / 5
-    return width_at_zero + (width_at_pos5 - width_at_zero) * t
-  end
-end
-
--- Output update loop
-
-function update_outputs()
-  local now_time = now()
-  local dt = now_time - last_time
-  last_time = now_time
-
-  -- Update global phase with wrapping
-  phase = (phase + rotation_speed * dt) % 360
-
-  -- Compute output voltages for each channel
-  for i = 1, 4 do
-    local channel_phase = (phase - channel_offsets[i]) % 360
-    local gain = calculate_gain(channel_phase)
-    local volts = gain * 10 - 5   -- scale 0–1 gain to –5 V to +5 V
-    output[i].volts = volts
-  end
+function tick()
+    phase_deg = (phase_deg + rotation_speed_dps * update_interval) % 360.0
+    for i=1,4 do
+        local pd   = phase_deg - channel_offsets[i]
+        local g    = lobe_gain(pd)
+        output[i].volts = gain_to_volts(g)
+    end
 end
