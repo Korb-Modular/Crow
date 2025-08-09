@@ -13,7 +13,7 @@ RotatingCVs generates **four phase-shifted control voltages** (Out1..Out4, 90° 
 
 ---
 
-## ✨ Features
+## Features
 - **Four outputs, 90° phase-shifted**: Controlled by `channel_offsets = {0, 90, 180, 270}`.
 - **Width control via CV2** (degrees over the LFO phase):  
   - **−5 V** → narrow lobe (default: 15°) → steep edges, silent gaps possible  
@@ -26,7 +26,7 @@ RotatingCVs generates **four phase-shifted control voltages** (Out1..Out4, 90° 
 
 ---
 
-## 📦 Quick Start
+## Quick Start
 1. Copy `RotatingCVs.lua` to your Crow and run it via Druid.
 2. Patch your inputs and outputs:  
    - **In1** → CV source for speed (−5..+5 V; negative = reverse)  
@@ -38,7 +38,7 @@ RotatingCVs generates **four phase-shifted control voltages** (Out1..Out4, 90° 
 
 ---
 
-## ⚙ Parameters (in the script)
+## Parameters (in the script)
 
 ### Timing & Smoothing
 ```lua
@@ -116,7 +116,7 @@ with different width settings controlled via **In2**:
 
 ---
 
-## 🛠 Troubleshooting
+## Troubleshooting
 - **Druid shows “Event queue full”**  
   - Increase `update_interval` (e.g., 0.015–0.02).  
   - Reduce `print()` statements in the script.  
@@ -129,7 +129,7 @@ with different width settings controlled via **In2**:
 
 ---
 
-## 📜 Changelog
+## Changelog
 
 ### v2.1
 - Fixed lobe width shaping (hard zero outside ±W/2).  
@@ -139,5 +139,5 @@ with different width settings controlled via **In2**:
 
 ---
 
-## 📄 License
+## License
 MIT License – see `LICENSE` file for details.
