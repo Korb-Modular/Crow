@@ -1,7 +1,8 @@
---[[ 
+--[[
 RotatingCVs – Variable-Width Rotating LFO for Monome Crow
 ---------------------------------------------------------
 Author: Marcus Korb
+
 Description:
     Generates four phase-shifted CV outputs (90° apart) from a master LFO.
     LFO speed is controlled via Input 1 (–5..+5 V, bipolar speed & direction).
@@ -17,10 +18,10 @@ Inputs:
 Outputs:
     Out1..Out4 : CV outputs, 90° phase-shifted, centered around global offset
 
-Width Control (CV2):
+Width Control (CV2 mapping):
     - At –5 V → narrow lobe (default: 30°) → steep edges, possible silent gaps
     - At  0 V → medium lobe (default: 90°) → standard crossfade
-    - At +5 V → wide lobe (default: 270°) → soft overlap between outputs
+    - At +5 V → wide lobe (default: 270°) → strong overlap
     Mapping is linear between these three points, adjustable via:
         width_at_neg5, width_at_zero, width_at_pos5
 
@@ -28,9 +29,9 @@ Global Output Offset:
     output_offset_volts shifts the baseline of all outputs:
         -5.0 → swing = -5..+5 V
          0.0 → swing = 0..+10 V
-        +2.0 → swing = +2..+12 V (will clamp to ±10 V max)
+        +2.0 → swing = +2..+12 V (clamped to ±10 V)
 
-Version: 2.0
+Version: 2.1
 License: MIT
 ]]--
 
@@ -38,16 +39,16 @@ License: MIT
 local function clamp(x, a, b) return math.max(a, math.min(b, x)) end
 
 -- ===== Parameters =====
-local update_interval    = 0.02     -- seconds per tick
+local update_interval    = 0.01     -- seconds per tick
 local slew_time          = 0.02     -- seconds
 local phase_deg          = 0.0      -- 0..360
 local speed_deg_per_5v   = 180.0    -- deg/sec at CV1 = +5 V
-local width_at_neg5      = 30.0     -- deg width at CV2 = –5 V
+local width_at_neg5      = 15.0     -- deg width at CV2 = –5 V
 local width_at_zero      = 90.0     -- deg width at CV2 =  0 V
-local width_at_pos5      = 270.0    -- deg width at CV2 = +5 V
+local width_at_pos5      = 360.0    -- deg width at CV2 = +5 V
 local current_width      = width_at_zero
 local edge_exponent      = 1.0      -- >1 sharpens edges
-local shape_mode         = "triangle" -- "triangle" or "cosine"
+local shape_mode         = "cosine" -- "triangle" or "cosine"
 local channel_offsets    = {0, 90, 180, 270} -- per-output phase offsets
 local output_offset_volts = -5.0    -- global baseline offset (V)
 
@@ -74,20 +75,34 @@ end
 local function gain_triangle(pd_deg, W)
     local halfW = W * 0.5
     local d = math.abs(pd_deg)
-    if d >= halfW then return 0.0 end
-    return 1.0 - (d / halfW)
+    if d >= halfW then
+        return 0.0
+    else
+        return 1.0 - (d / halfW)
+    end
 end
 
 local function gain_cosine(pd_deg, W)
-    local x = (math.pi * pd_deg) / W
-    local c = math.cos(x)
-    return (c > 0.0) and c or 0.0
+    local halfW = W * 0.5
+    local d = math.abs(pd_deg)
+    if d >= halfW then
+        return 0.0
+    else
+        -- scale so that cos crosses zero exactly at ±W/2
+        local x = (d / halfW) * (math.pi / 2)
+        return math.cos(x)
+    end
 end
 
 local function lobe_gain(phase_diff_deg)
     local pd = normalize_pm180(phase_diff_deg)
     local W  = clamp(current_width, 0.1, 359.9)
-    local g  = (shape_mode == "triangle") and gain_triangle(pd, W) or gain_cosine(pd, W)
+    local g
+    if shape_mode == "triangle" then
+        g = gain_triangle(pd, W)
+    else
+        g = gain_cosine(pd, W)
+    end
     if edge_exponent and edge_exponent ~= 1.0 then
         g = g ^ edge_exponent
     end
@@ -102,7 +117,7 @@ end
 
 -- ===== Crow lifecycle =====
 function init()
-    print("RotatingCVs v2 – Width control + Global voltage offset")
+    print("RotatingCVs v2.1 – Width control fix + Global voltage offset")
     for i=1,4 do
         output[i].slew  = slew_time
         output[i].volts = output_offset_volts
@@ -112,7 +127,7 @@ function init()
     input[1].mode   = 'stream'
     input[1].stream = function(v)
         local vv = clamp(v, -5.0, 5.0)
-        rotation_speed_dps = (vv/5.0) * speed_deg_per_5v
+        rotation_speed_dps = (vv/5.0) * speed_deg_per_5v *24
     end
 
     -- CV2: Width control
