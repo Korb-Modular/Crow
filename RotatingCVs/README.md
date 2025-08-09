@@ -103,6 +103,19 @@ Result:
 
 ---
 
+
+## Signal Width Control
+
+The following diagram shows the Master LFO and the four phase-shifted outputs (Out1–Out4)  
+with different width settings controlled via **In2**:
+
+![Signal Width Control](docs/rotating_cvs_diagram_technical_labeled_v2.png)
+
+> **Note:** For lossless scaling and zooming, see the  
+> [SVG version](docs/rotating_cvs_diagram_technical_labeled_v2.svg).
+
+---
+
 ## 🛠 Troubleshooting
 - **Druid shows “Event queue full”**  
   - Increase `update_interval` (e.g., 0.015–0.02).  
