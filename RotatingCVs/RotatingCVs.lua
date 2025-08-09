@@ -1,6 +1,6 @@
 -- Rotating Crossfade with 4 outputs for Monome Crow
 -- CV1: Rotation speed (–5 V to +5 V → slow rotation backward/forward)
--- CV2: Crossfade width (0 V to 10 V → overlap amount between channels)
+-- CV2: Crossfade width (–5 V to +5 V → overlap amount between channels; 0 V = mid width)
 -- Outputs 1–4: Rotating CV –5 V to +5 V, 90° phase shifted
 -- Crossfade modes: "scale" or "power"
 
@@ -50,10 +50,11 @@ function init()
     rotation_speed = clamp(volts, -5, 5) * max_rotation_per_volt
   end
 
-  -- CV2: Crossfade bandwidth input
+  -- CV2: Crossfade bandwidth input (–5..+5 V → 0..1)
   input[2].mode = 'stream'
   input[2].stream = function(volts)
-    bandwidth = clamp(volts / 10, 0, 1)
+    -- Map –5..+5 V to 0..1 (0 V = 0.5)
+    bandwidth = clamp((volts + 5) / 10, 0, 1)
   end
 
   metro.init(update_outputs, update_interval):start()
