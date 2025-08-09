@@ -1,7 +1,7 @@
 # RotatingCVs – Variable-Width Rotating LFO for Monome Crow
 
 **Author:** Marcus Korb  
-**Version:** 2.1  
+**Version:** 2.0  
 **License:** MIT
 
 RotatingCVs generates **four phase-shifted control voltages** (Out1..Out4, 90° apart) from a **master LFO**.
@@ -131,7 +131,7 @@ with different width settings controlled via **In2**:
 
 ## Changelog
 
-### v2.1
+### v2.0
 - Fixed lobe width shaping (hard zero outside ±W/2).  
 - Added global output offset with ±10 V clamp.  
 - Higher speed headroom via ×24 scaling in CV1 handler.  
